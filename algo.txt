@@ -1,0 +1,7 @@
+- atur posisi sesuai spec
+- gabung pesan
+- tambah binary diawal
+- tambah mti diawal lagi
+- tambah message separator
+    - Length prefix
+    - Trailer

@@ -17,7 +17,7 @@ func pingDb(db *sql.DB) error {
 
 //initializing database connection
 func initDb() *sql.DB {
-	db, e := sql.Open("mysql", "test:PassworD12312312?@tcp(127.0.0.1)/pymnt_db")
+	db, e := sql.Open("mysql", "root:password@tcp(127.0.0.1)/pymnt_db")
 	errorCheck(e)
 	return db
 }

@@ -3,9 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/mofax/iso8583"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -42,6 +46,79 @@ func getPayments(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func writeFile(transaction Transaction) {
+
+	one := iso8583.NewISOStruct("spec1987.yml", false)
+
+	if one.Mti.String() != "" {
+		fmt.Printf("Empty generates invalid MTI")
+	}
+
+	one.AddMTI("0200")
+	one.AddField(2, transaction.Pan)
+	one.AddField(3, transaction.ProcessingCode)
+	one.AddField(4, strconv.Itoa(transaction.TotalAmount))
+	one.AddField(5, transaction.SettlementAmount)
+	one.AddField(6, transaction.CardholderBillingAmount)
+	one.AddField(7, transaction.TransmissionDateTime)
+	one.AddField(9, transaction.SettlementConversionrate)
+	one.AddField(10, transaction.CardHolderBillingConvRate)
+	one.AddField(11, transaction.Stan)
+	one.AddField(12, transaction.LocalTransactionTime)
+	one.AddField(13, transaction.LocalTransactionDate)
+	one.AddField(17, transaction.CaptureDate)
+	one.AddField(18, transaction.CategoryCode)
+	one.AddField(22, transaction.PointOfServiceEntryMode)
+	one.AddField(37, transaction.Refnum)
+	one.AddField(41, transaction.CardAcceptorData.CardAcceptorTerminalId)
+	one.AddField(43, transaction.CardAcceptorData.CardAcceptorName)
+	one.AddField(48, transaction.AdditionalData)
+	one.AddField(49, transaction.Currency)
+	one.AddField(50, transaction.SettlementCurrencyCode)
+	one.AddField(51, transaction.CardHolderBillingCurrencyCode)
+	one.AddField(57, transaction.AdditionalDataNational)
+
+	expected := "02007ef8c40008a1e080199360014900000008883263010115500001350000135000009210820220000011100000111554461082022092109217011011678615554461C01IUT MLPT      RINTIS     050PI04Q001CD30SUSAEN                         MC03UMI36070270202061051511562070703C01"
+	unpacked, _ := one.ToString()
+	if unpacked != expected {
+		fmt.Printf("Manually constructed isostruct produced %s not %s", unpacked, expected)
+	}
+
+	//Check if file's name already exist
+	fileName := transaction.ProcessingCode
+	if !strings.Contains(fileName, ".txt") {
+		fileName += ".txt"
+	}
+
+	content := CreateFile(fileName, unpacked)
+
+	fmt.Printf(content)
+}
+
+func CreateFile(fileName string, content string) string {
+
+	if !strings.Contains(fileName, ".txt") {
+		fileName += ".txt"
+	}
+
+	file, err := os.Create("files/" + fileName)
+
+	if err != nil {
+		log.Fatalf("failed creating file: %s", err)
+	}
+
+	defer file.Close()
+
+	_, err = file.WriteString(content)
+
+	if err != nil {
+		log.Fatalf("failed writing to file: %s", err)
+	}
+
+	return content
+
+}
+
 // handler action from route with request get payment with
 // procid
 // todo
@@ -68,6 +145,7 @@ func getPayment(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 			response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 200, "success"
 			response.TransactionData = payment
+			writeFile(payment)
 		}
 	}
 	json.NewEncoder(w).Encode(response)
