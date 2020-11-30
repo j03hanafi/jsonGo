@@ -231,7 +231,7 @@
   MaxLen: 76
 46:
   ContentType: an
-  Label: Additioal data - ISO
+  Label: Additional data - ISO
   LenType: lllvar
   MaxLen: 999
 47:
@@ -644,4 +644,3 @@
   Label: Message authentication code
   LenType: fixed
   MaxLen: 8
-

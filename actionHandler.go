@@ -3,18 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/mofax/iso8583"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
 )
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("ok")
-	err := pingDb(dbCon)
-	fmt.Println(err)
 }
 
 // handler action from route with request get all payments
@@ -25,26 +26,112 @@ func getPayments(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	response := PaymentsResponse{}
-	fresponse := FailPaymentsResponse{}
 	err := pingDb(dbCon)
 
 	if err != nil {
 		w.WriteHeader(500)
-		fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 500, serverError
-		json.NewEncoder(w).Encode(fresponse)
+		response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, serverError
 	} else {
 		payments, err := selectPayments(dbCon)
 		if err != nil {
 			w.WriteHeader(500)
-			fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 500, err.Error()
-			json.NewEncoder(w).Encode(fresponse)
+			response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, err.Error()
 		} else {
 			w.WriteHeader(200)
 			response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 200, "success"
 			response.TransactionData = payments
-			json.NewEncoder(w).Encode(response)
 		}
 	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func writeFile(transaction Transaction) {
+
+	one := iso8583.NewISOStruct("spec1987.yml", false)
+
+	if one.Mti.String() != "" {
+		fmt.Printf("Empty generates invalid MTI")
+	}
+
+	one.AddMTI("0200")
+	one.AddField(2, transaction.Pan)
+	one.AddField(3, transaction.ProcessingCode)
+	one.AddField(4, strconv.Itoa(transaction.TotalAmount))
+	one.AddField(5, transaction.SettlementAmount)
+	one.AddField(6, transaction.CardholderBillingAmount)
+	one.AddField(7, transaction.TransmissionDateTime)
+	one.AddField(9, transaction.SettlementConversionrate)
+	one.AddField(10, transaction.CardHolderBillingConvRate)
+	one.AddField(11, transaction.Stan)
+	one.AddField(12, transaction.LocalTransactionTime)
+	one.AddField(13, transaction.LocalTransactionDate)
+	one.AddField(17, transaction.CaptureDate)
+	one.AddField(18, transaction.CategoryCode)
+	one.AddField(22, transaction.PointOfServiceEntryMode)
+	one.AddField(37, transaction.Refnum)
+	one.AddField(41, transaction.CardAcceptorData.CardAcceptorTerminalId)
+	one.AddField(43, transaction.CardAcceptorData.CardAcceptorName)
+	one.AddField(48, transaction.AdditionalData)
+	one.AddField(49, transaction.Currency)
+	one.AddField(50, transaction.SettlementCurrencyCode)
+	one.AddField(51, transaction.CardHolderBillingCurrencyCode)
+	one.AddField(57, transaction.AdditionalDataNational)
+
+	//expected := "02007ef8c40008a1e080199360014900000008883263010115500001350000135000009210820220000011100000111554461082022092109217011011678615554461C01IUT MLPT      RINTIS     050PI04Q001CD30SUSAEN                         MC03UMI36070270202061051511562070703C01"
+	unpacked, _ := one.ToString()
+	//if unpacked != expected {
+	//	fmt.Printf("Manually constructed isostruct produced %s not %s", unpacked, expected)
+	//}
+
+	//Check if file's name already exist
+	fileName := transaction.ProcessingCode
+	if !strings.Contains(fileName, ".txt") {
+		fileName += ".txt"
+	}
+
+	content := CreateFile(fileName, unpacked)
+
+	fmt.Printf(content + "\n\n\n")
+
+	//parsed, err := one.Parse(unpacked)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	fmt.Println("parse iso message failed")
+	//}
+	//
+	//isomsgUnpacked, err := parsed.ToString()
+	//if err != nil {
+	//	fmt.Println(err)
+	//	fmt.Println("failed to unpack valid isomsg")
+	//}
+	//if isomsgUnpacked != expected {
+	//	fmt.Printf("%s should be %s", isomsgUnpacked, expected)
+	//}
+	//fmt.Printf("%#v, %#v\n%#v", parsed.Mti, parsed.Bitmap, parsed.Elements)
+}
+
+func CreateFile(fileName string, content string) string {
+
+	if !strings.Contains(fileName, ".txt") {
+		fileName += ".txt"
+	}
+
+	file, err := os.Create("files/" + fileName)
+
+	if err != nil {
+		log.Fatalf("failed creating file: %s", err)
+	}
+
+	defer file.Close()
+
+	_, err = file.WriteString(content)
+
+	if err != nil {
+		log.Fatalf("failed writing to file: %s", err)
+	}
+
+	return content
 
 }
 
@@ -55,31 +142,29 @@ func getPayments(w http.ResponseWriter, r *http.Request) {
 func getPayment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	response := PaymentResponse{}
-	fresponse := FailPaymentsResponse{}
 	err := pingDb(dbCon)
 	processingCode := mux.Vars(r)["id"]
 
 	if err != nil {
 		w.WriteHeader(500)
-		fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 500, serverError
-		json.NewEncoder(w).Encode(fresponse)
+		response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, serverError
 	} else {
 		payment, err := selectPayment(processingCode, dbCon)
 		if err != nil {
 			w.WriteHeader(500)
-			fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 500, err.Error()
-			json.NewEncoder(w).Encode(fresponse)
+			response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, err.Error()
 		} else if payment.ProcessingCode == "" {
 			w.WriteHeader(404)
-			fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 404, "data not found"
-			json.NewEncoder(w).Encode(fresponse)
+			response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 404, "data not found"
+
 		} else {
 			w.WriteHeader(200)
 			response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 200, "success"
 			response.TransactionData = payment
-			json.NewEncoder(w).Encode(response)
+			writeFile(payment)
 		}
 	}
+	json.NewEncoder(w).Encode(response)
 }
 
 //handler action from route with request post with json body required
@@ -93,12 +178,11 @@ func createPayment(w http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(r.Body)
 	errorCheck(err)
 	response := PaymentResponse{}
-	fresponse := FailPaymentsResponse{}
 
 	err = pingDb(dbCon)
 
 	if err != nil {
-		response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 500, serverError
+		response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, serverError
 	} else {
 		var trs Transaction
 		err = json.Unmarshal(b, &trs)
@@ -110,21 +194,20 @@ func createPayment(w http.ResponseWriter, r *http.Request) {
 
 			if err != nil {
 				w.WriteHeader(500)
-				fresponse.ResponseStatus.ResponseCode, fresponse.ResponseStatus.ResponseDescription = 500, err.Error()
-				json.NewEncoder(w).Encode(fresponse)
+				response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, err.Error()
 			} else {
 				w.WriteHeader(200)
-				response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 200, "success"
+				response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 200, "success"
 				response.TransactionData, _ = selectPayment(processingCode, dbCon)
-				json.NewEncoder(w).Encode(response)
 			}
 		} else {
 			w.WriteHeader(403)
-			fresponse.ResponseStatus.ResponseCode, fresponse.ResponseStatus.ResponseDescription = 403, "duplicate processingCode"
-			json.NewEncoder(w).Encode(fresponse)
+			response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 403, "duplicate processingCode"
+			response.TransactionData = trs
 		}
 	}
 
+	json.NewEncoder(w).Encode(response)
 }
 
 //handler action from route with request put with json body required
@@ -149,7 +232,6 @@ func updatePayment(w http.ResponseWriter, r *http.Request) {
 	typeOfU := t.Type()
 	procCode := mux.Vars(r)["id"]
 	response := PaymentResponse{}
-	fresponse := FailPaymentsResponse{}
 
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
@@ -181,21 +263,19 @@ func updatePayment(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(500)
-		fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 500, err.Error()
-		json.NewEncoder(w).Encode(fresponse)
+		response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 500, err.Error()
 	} else {
 		if payment.ProcessingCode == "" {
 			w.WriteHeader(400)
-			fresponse.ResponseStatus.ReasonCode, fresponse.ResponseStatus.ResponseDescription = 400, "data not exist"
-			json.NewEncoder(w).Encode(fresponse)
+			response.ResponseStatus.ReasonCode, response.ResponseStatus.ResponseDescription = 400, "data not exist"
 		} else {
 			w.WriteHeader(200)
 			response.ResponseStatus.ResponseCode, response.ResponseStatus.ResponseDescription = 200, "updated"
-			response.TransactionData, _ = selectPayment(procCode, dbCon)
-			json.NewEncoder(w).Encode(response)
+			response.TransactionData = trs
 		}
 	}
 
+	json.NewEncoder(w).Encode(response)
 }
 
 //handler action from route with request delte based on proc code that send as param
