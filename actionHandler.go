@@ -78,11 +78,11 @@ func writeFile(transaction Transaction) {
 	one.AddField(51, transaction.CardHolderBillingCurrencyCode)
 	one.AddField(57, transaction.AdditionalDataNational)
 
-	expected := "02007ef8c40008a1e080199360014900000008883263010115500001350000135000009210820220000011100000111554461082022092109217011011678615554461C01IUT MLPT      RINTIS     050PI04Q001CD30SUSAEN                         MC03UMI36070270202061051511562070703C01"
+	//expected := "02007ef8c40008a1e080199360014900000008883263010115500001350000135000009210820220000011100000111554461082022092109217011011678615554461C01IUT MLPT      RINTIS     050PI04Q001CD30SUSAEN                         MC03UMI36070270202061051511562070703C01"
 	unpacked, _ := one.ToString()
-	if unpacked != expected {
-		fmt.Printf("Manually constructed isostruct produced %s not %s", unpacked, expected)
-	}
+	//if unpacked != expected {
+	//	fmt.Printf("Manually constructed isostruct produced %s not %s", unpacked, expected)
+	//}
 
 	//Check if file's name already exist
 	fileName := transaction.ProcessingCode
@@ -92,7 +92,23 @@ func writeFile(transaction Transaction) {
 
 	content := CreateFile(fileName, unpacked)
 
-	fmt.Printf(content)
+	fmt.Printf(content + "\n\n\n")
+
+	//parsed, err := one.Parse(unpacked)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	fmt.Println("parse iso message failed")
+	//}
+	//
+	//isomsgUnpacked, err := parsed.ToString()
+	//if err != nil {
+	//	fmt.Println(err)
+	//	fmt.Println("failed to unpack valid isomsg")
+	//}
+	//if isomsgUnpacked != expected {
+	//	fmt.Printf("%s should be %s", isomsgUnpacked, expected)
+	//}
+	//fmt.Printf("%#v, %#v\n%#v", parsed.Mti, parsed.Bitmap, parsed.Elements)
 }
 
 func CreateFile(fileName string, content string) string {
